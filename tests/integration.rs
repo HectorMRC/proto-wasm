@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 use protobuf::Message;
 use std::{env, fs::File, io::Read, path::Path};
 use wasmer::{Instance, Module, Store, WasmSlice};
-use wasmer_wasix::{Pipe, WasiEnv};
+use wasmer_wasix::WasiEnv;
 
 const MEMORY_KEY: &str = "memory";
 
@@ -49,13 +49,13 @@ async fn wasm_returning_raw_string() {
         .initialize(&mut store, instance.clone())
         .expect("instance must be initialized in the wasi environment");
 
-    let generate = instance
+    let new_string = instance
         .exports
-        .get_typed_function::<u32, u32>(&store, "new")
+        .get_typed_function::<u32, u32>(&store, "new_string")
         .expect("generate wasm function must exists");
 
     let want = 32 * 1024 * 1024; // 32MB
-    let pointer = generate
+    let pointer = new_string
         .call(&mut store, want)
         .expect("generate wasm function must be called");
 
@@ -75,7 +75,7 @@ async fn wasm_returning_raw_string() {
     )
     .await;
 
-    eprintln!("RAW_OUTPUT_LEN={output_len}");
+    eprintln!("OUTPUT_LEN={output_len}");
 
     let output: Vec<u8> = WasmSlice::new(&view, pointer as u64 + 4, output_len as u64)
         .expect("wasm slice for output must be initialized")
@@ -91,10 +91,7 @@ async fn wasm_returning_proto_message() {
     let mut store = Store::default();
     let module = Module::new(&store, &*PROTO_WASM_BYTES).expect("wasm module must be initialized");
 
-    let (stdout_tx, mut stdout_rx) = Pipe::channel();
-
     let mut wasi_env = WasiEnv::builder("test")
-        .stdout(Box::new(stdout_tx))
         .finalize(&mut store)
         .expect("wasi env must be builded");
 
@@ -109,29 +106,19 @@ async fn wasm_returning_proto_message() {
         .initialize(&mut store, instance.clone())
         .expect("instance must be initialized in the wasi environment");
 
-    let generate = instance
+    let new_proto = instance
         .exports
         .get_typed_function::<u32, u32>(&store, "new_proto")
         .expect("generate wasm function must exists");
 
-    // Any value over 133 bytes will end up with an output len of 1060284
-    // and a HeapOutOfBounds error.
-    let want = 134;
-    let pointer = generate
+    let want = 32 * 1024 * 1024; // 32MB
+    
+    let pointer = new_proto
         .call(&mut store, want)
         .expect("generate wasm function must be called");
 
     // needed to close stdout_rx with an EOF.
     wasi_env.on_exit(&mut store, None);
-
-    std::thread::scope(|scope| {
-        scope.spawn(move || {
-            let mut buf = String::new();
-            stdout_rx.read_to_string(&mut buf).unwrap();
-
-            eprint!("ACTUAL_PROTO_LEN={buf}");
-        });
-    });
 
     let memory = instance
         .exports
@@ -149,9 +136,9 @@ async fn wasm_returning_proto_message() {
     )
     .await;
 
-    eprintln!("PROTO_OUTPUT_LEN={output_len}");
+    eprintln!("OUTPUT_LEN={output_len}");
 
-    let output: Vec<u8> = WasmSlice::new(&view, pointer as u64 + 4, output_len as u64)
+    let output: Vec<u8> = WasmSlice::new(&view, (pointer+4) as u64, output_len as u64)
         .expect("wasm slice for output must be initialized")
         .read_to_vec()
         .expect("wasm slice for output must be written into a vec");
