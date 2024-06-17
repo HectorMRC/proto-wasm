@@ -112,7 +112,7 @@ async fn wasm_returning_proto_message() {
         .expect("generate wasm function must exists");
 
     let want = 32 * 1024 * 1024; // 32MB
-    
+
     let pointer = new_proto
         .call(&mut store, want)
         .expect("generate wasm function must be called");
@@ -138,7 +138,7 @@ async fn wasm_returning_proto_message() {
 
     eprintln!("OUTPUT_LEN={output_len}");
 
-    let output: Vec<u8> = WasmSlice::new(&view, (pointer+4) as u64, output_len as u64)
+    let output: Vec<u8> = WasmSlice::new(&view, (pointer + 4) as u64, output_len as u64)
         .expect("wasm slice for output must be initialized")
         .read_to_vec()
         .expect("wasm slice for output must be written into a vec");
